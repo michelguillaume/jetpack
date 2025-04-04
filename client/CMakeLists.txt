@@ -23,9 +23,19 @@ set(HEADERS
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/$<CONFIG>
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE include)
 
+target_compile_options(${PROJECT_NAME} PRIVATE
+        $<$<CONFIG:Debug>:-g -O0 -Wall -Wextra>
+        $<$<CONFIG:Release>:-O3 -DNDEBUG>
+)
+
 # target_link_libraries(${PROJECT_NAME} PRIVATE ...)
+
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --yellow --bold
+        "🎉 Executable ${PROJECT_NAME} placed in: ${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
+)
