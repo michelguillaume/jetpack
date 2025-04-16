@@ -17,7 +17,8 @@ set(SOURCES
 )
 
 set(HEADERS
-
+    include/game_server.hpp
+    include/packet_dispatcher.hpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
@@ -33,7 +34,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Release>:-O3 -DNDEBUG>
 )
 
-# target_link_libraries(${PROJECT_NAME} PRIVATE ...)
+target_link_libraries(${PROJECT_NAME} PRIVATE network_lib common)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --yellow --bold

@@ -1,4 +1,3 @@
-##
 ## EPITECH PROJECT, 2025
 ## CMakeLists.txt
 ## File description:
@@ -17,7 +16,9 @@ set(SOURCES
 )
 
 set(HEADERS
-
+        include/input_manager.hpp
+        include/player_actions.hpp
+        include/window_manager.hpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
@@ -33,7 +34,12 @@ target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Release>:-O3 -DNDEBUG>
 )
 
-# target_link_libraries(${PROJECT_NAME} PRIVATE ...)
+target_link_libraries(${PROJECT_NAME} PRIVATE network_lib common)
+
+set(SFML_DIR "/opt/homebrew/Cellar/sfml/3.0.0/lib/cmake/SFML")
+find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE SFML::Graphics SFML::Window SFML::System)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --yellow --bold
