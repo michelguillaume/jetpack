@@ -36,10 +36,11 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 target_link_libraries(${PROJECT_NAME} PRIVATE network_lib common)
 
-set(SFML_DIR "/opt/homebrew/Cellar/sfml/3.0.0/lib/cmake/SFML")
-find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
+set(SFML_ROOT "/usr")
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "/usr/share/SFML/cmake/Modules")
+find_package(SFML 2.6 REQUIRED system window graphics)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE SFML::Graphics SFML::Window SFML::System)
+target_link_libraries(${PROJECT_NAME} PRIVATE sfml-graphics sfml-window sfml-system)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --yellow --bold

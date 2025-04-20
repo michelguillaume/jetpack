@@ -41,12 +41,12 @@ int main() {
     std::uint32_t pingMs = 0;
 
     sf::Font font;
-    if (!font.openFromFile("assets/fonts/Roboto Font/static/Roboto-Black.ttf")) {
+    if (!font.loadFromFile("assets/fonts/Roboto Font/static/Roboto-Black.ttf")) {
         std::cerr << "Failed to load font." << std::endl;
         return 1;
     }
 
-    sf::Text pingText(font, "", 24);
+    sf::Text pingText("", font, 24);
     pingText.setFillColor(sf::Color::White);
     pingText.setPosition(sf::Vector2f(10.f, 10.f));
 
@@ -60,11 +60,12 @@ int main() {
     );
 
     while (window.isOpen()) {
-        while (const std::optional<sf::Event> event = window.pollEvent()) {
-            if (event->is<sf::Event::Closed>()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
                 window.close();
             }
-            inputManager.HandleEvent(*event);
+            inputManager.HandleEvent(event);
         }
 
         if (client.hasPendingSendData()) {

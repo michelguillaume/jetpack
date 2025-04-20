@@ -48,8 +48,8 @@ class InputManager {
 
     bool actionsChanged = false;
 
-    if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>()) {
-      const sf::Keyboard::Key keyCode = keyPressed->code;
+    if (event.type == sf::Event::KeyPressed) {
+      const sf::Keyboard::Key keyCode = event.key.code;
       auto it = keyToAction.find(keyCode);
       if (it != keyToAction.end()) {
         const uint16_t previousActions = current_actions_;
@@ -57,8 +57,8 @@ class InputManager {
         actionsChanged = (current_actions_ != previousActions);
       }
     }
-    else if (const auto* keyReleased = event.getIf<sf::Event::KeyReleased>()) {
-      const sf::Keyboard::Key keyCode = keyReleased->code;
+    else if (event.type == sf::Event::KeyReleased) {
+      const sf::Keyboard::Key keyCode = event.key.code;
       auto it = keyToAction.find(keyCode);
       if (it != keyToAction.end()) {
         const uint16_t previousActions = current_actions_;
@@ -66,9 +66,9 @@ class InputManager {
         actionsChanged = (current_actions_ != previousActions);
       }
     }
-    else if (const auto* mouseMoved = event.getIf<sf::Event::MouseMoved>()) {
-      const int mouseX = mouseMoved->position.x;
-      const int mouseY = mouseMoved->position.y;
+    else if (event.type == sf::Event::MouseMoved) {
+      const int mouseX = event.mouseMove.x;
+      const int mouseY = event.mouseMove.y;
       mouse_position_ = windowManager_.MouseToWorldCoordinates(mouseX, mouseY);
       actionsChanged = true;
     }
