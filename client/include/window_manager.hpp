@@ -12,7 +12,7 @@ public:
    * @brief Constructs the window manager by creating a new SFML window.
    */
   WindowManager()
-      : window(sf::VideoMode({800u, 600u}), "Game Client", sf::Style::Titlebar | sf::Style::Close)
+      : window(sf::VideoMode({1200u, 1000u}), "Game Client", sf::Style::Titlebar | sf::Style::Close)
   {
     window.setVerticalSyncEnabled(true);
   }

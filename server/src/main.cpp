@@ -23,20 +23,19 @@
 
 #include <iostream>
 
-#include "game_server.hpp"
 #include "common/packet_type.hpp"
+#include "game_server.hpp"
 
 int main() {
-    try {
-        server::GameServer<PacketType> gameServer(12345);
-        std::cout << "Server is running on port 12345." << std::endl;
+  try {
+    server::GameServer<PacketType> game_server(12345, "assets/basic.map");
+    std::cout << "Server is running on port 12345." << std::endl;
 
-        gameServer.Run();
-    }
-    catch (const std::exception &ex) {
-        std::cerr << "Server error: " << ex.what() << std::endl;
-        return 1;
-    }
+    game_server.Run();
+  } catch (const std::exception &ex) {
+    std::cerr << "Server error: " << ex.what() << std::endl;
+    return 1;
+  }
 
-    return 0;
+  return 0;
 }

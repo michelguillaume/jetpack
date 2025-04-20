@@ -59,6 +59,9 @@ public:
         send_buffer_.insert(send_buffer_.end(), data, data + size);
     }
 
+    void set_player_id(const uint32_t id) noexcept { player_id_ = id; }
+    [[nodiscard]] uint32_t get_player_id() const noexcept { return player_id_; }
+
 private:
     std::optional<Packet<PacketType>> extract_packet() {
         if (recv_buffer_.size() < sizeof(Header<PacketType>))
@@ -81,6 +84,7 @@ private:
     TcpSocket socket_;
     std::vector<uint8_t> recv_buffer_;
     std::vector<uint8_t> send_buffer_;
+    uint32_t player_id_{0};
 };
 
 } // namespace network

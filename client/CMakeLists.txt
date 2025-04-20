@@ -17,7 +17,6 @@ set(SOURCES
 
 set(HEADERS
         include/input_manager.hpp
-        include/player_actions.hpp
         include/window_manager.hpp
 )
 

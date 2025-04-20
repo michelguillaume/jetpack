@@ -195,6 +195,8 @@ class PacketFactory {
   static std::optional<T> ExtractData(const Packet<PacketType>& packet) {
     static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
 
+    std::cout << "ExtractData: packet size: " << packet.body.size() << " sizeof(T): " << sizeof(T) << std::endl;
+
     if (packet.body.size() != sizeof(T)) {
       return std::nullopt;
     }

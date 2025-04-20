@@ -4,18 +4,20 @@
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
-#include "player_actions.hpp"
+#include "common/player_actions.hpp"
 #include "window_manager.hpp"
 
 namespace jetpack {
 
 class InputManager {
+#pragma pack(push, 1)
  public:
   struct PlayerInput {
     uint16_t actions;
     float dir_x;
     float dir_y;
   };
+#pragma pack(pop)
 
   using InputCallback = std::function<void(PlayerInput&&)>;
 
