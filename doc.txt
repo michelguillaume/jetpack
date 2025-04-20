@@ -1,0 +1,187 @@
+Jetpack Multiplayer Game Protocol
+
+# doc.txt      April 2025
+
+## Abstract
+
+This document specifies the binary TCP protocol used by the Jetpack two-player multiplayer
+side‑scrolling game, including packet definitions, message framing, map file format,
+and game lifecycle events.
+
+## 1. Introduction
+
+Jetpack is a side‑scrolling collect‑and‑avoid game for two networked players. All communication
+uses reliable TCP with fixed‑layout binary packets. Clients send input; the server sends
+state updates and events.
+
+## 2. Conventions
+
+- **Endianness**: All integers and floats are little‑endian.
+- **Integers**: `uint8_t`, `uint16_t`, `uint32_t` as specified.
+- **Floats**: IEEE‑754 32‑bit.
+- **Vec2**: two consecutive floats (`x, y`).
+- **Packing**: All payload structs are tightly packed (no padding).
+- **Packet Header**: Every message begins with an 8‑byte fixed header.
+
+## 3. Message Framing
+
+Each packet on the wire consists of an 8‑byte header followed by a payload whose length is indicated in the header:
+
+```
+0         4        8           8+N
++---------+--------+-----------+
+| type    | length | payload   |
++---------+--------+-----------+
+  4 bytes   4 bytes   N bytes
+```
+
+1. **type**   (`uint32_t`): the packet type identifier.
+2. **length** (`uint32_t`): the size in bytes of the *payload* section—**not** including the 8‑byte header itself.
+3. **payload**: exactly `length` bytes, content defined per packet type.
+
+- The `length` field counts only the data bytes following the header.  To compute the total on‑wire size, add 8 bytes for the header plus `length` bytes of payload.
+
+Clients and servers must:
+
+1. Read 8 bytes to obtain `type` and `length`.
+2. Read exactly `length` bytes for the payload.
+3. Interpret payload according to the packet type’s struct definition.
+
+## 4. Packet Types Packet Types
+
+```text
+enum PacketType : uint32_t {
+  kPing = 0,
+  kPong,
+  kPlayerInput,
+  kAssignPlayerId,
+  kUpdatePlayers,
+  kMapCoins,
+  kCoinCollected,
+  kMapZappers,
+  kZapperCollision,
+  kPlayerDeath,
+  kCoinExpired,
+  kPlayerReady,
+  kPlayerReadyCount,
+  kGameStart,
+  kPlayerScore,
+  kData,
+  kMaxTypes
+};
+```
+
+## 5. Payload Definitions
+
+All payload structs are defined with byte‑exact fields and must match the on‑wire layout.
+
+### 5.1. Ping / Pong
+
+- **PingPacket**: `uint32_t timestamp_ms;` (client → server)
+- **PongPacket**: `uint32_t timestamp_ms;` (server → client)
+
+### 5.2. Player Input
+
+- **PlayerInputPacket**:
+  - `uint16_t actions;`  (bitmask)
+  - `float dir_x;`       (unit vector X)
+  - `float dir_y;`       (unit vector Y)
+
+Sent each update tick from client to server.
+
+### 5.3. Assign Player ID
+
+- **AssignPlayerIdPacket**: `uint32_t player_id;` (server → client)
+
+### 5.4. Player Updates
+
+- **UpdatePlayer**:
+  - `uint32_t player_id;`
+  - `float x, y;`
+
+Array sent in `kUpdatePlayers` messages (~60 Hz).
+
+### 5.5. Coins
+
+- **MapCoin**:
+  - `uint32_t id;`
+  - `Vec2 pos;`
+- **CoinCollectedPacket**:
+  - `uint32_t player_id;`
+  - `uint32_t coin_id;`
+- **CoinExpiredPacket**:
+  - `uint32_t coin_id;`
+
+`kMapCoins` sends an array of all `MapCoin` at game start or reset.
+
+### 5.6. Zappers
+
+- **MapZapperSegment**:
+  - `uint32_t id;`
+  - `Vec2 a, b;`
+- **ZapperCollisionPacket**:
+  - `uint32_t player_id, zapper_id;`
+
+`kMapZappers` sends an array of all zapper segments.
+
+### 5.7. Death & Score
+
+- **PlayerDeathPacket**: `uint32_t player_id;`
+- **PlayerScorePacket**:
+  - `uint32_t player_id;`
+  - `uint32_t coins_collected;`
+
+On death, server broadcasts `PlayerDeathPacket` to all clients then sends `PlayerScorePacket`
+only to the dead client.
+
+### 5.8. Lobby Control
+
+- **PlayerReadyPacket**: `bool ready;` (client → server)
+- **PlayerReadyCountPacket**:
+  - `uint32_t ready_count;`
+  - `uint32_t total_count;`
+- **GameStartPacket**: _empty payload_ (server → clients)
+
+Clients toggle ready state; server broadcasts counts and, when ≥2 connected and all ready,
+sends `GameStartPacket`.
+
+### 5.9. Legacy Data
+
+- **DataPacket** (unused):
+  - `uint32_t game_state;`
+  - `float player_x, player_y;`
+  - `uint32_t score;`
+
+## 6. Map Format
+
+Server loads a text grid from file; characters define tile contents:
+```
+  c → coin
+  e → wall/zapper
+  _ → empty
+```
+Server converts each `c` to a `MapCoin` at tile center and groups contiguous `e` tiles into
+horizontal or vertical `MapZapperSegment`s, assigning unique IDs.
+
+## 7. Game Sequence
+
+1. **Connect**: client opens TCP; server assigns ID via `kAssignPlayerId`.
+2. **Map Delivery**: server sends `kMapCoins`, `kMapZappers`.
+3. **Lobby**: clients send `kPlayerReady`; server broadcasts `kPlayerReadyCount`.
+   - When ≥2 connected and all ready, server sends `kGameStart`.
+4. **Play**: clients send `kPlayerInput`; server applies physics, then broadcasts:
+   - `kUpdatePlayers`
+   - `kCoinCollected`, `kCoinExpired`
+   - `kZapperCollision`, `kPlayerDeath`, `kPlayerScore`
+5. **End**: on death or map end, server may reset map and return to step 2.
+
+## 8. Robustness
+
+- Server authoritative; ignore or disconnect on malformed or out‑of‑bounds packets.
+- No UDP: all data is sent reliably over TCP.
+
+## 9. References
+
+- IEEE‑754 for floating‑point representation.
+- Binary protocols (e.g. RFC6455 framing model) for inspiration.
+
