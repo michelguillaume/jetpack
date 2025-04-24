@@ -36,8 +36,8 @@ int main() {
     jetpack::WindowManager windowManager;
     sf::RenderWindow &window = windowManager.getWindow();
 
-    const float worldWidth  = 1726.f;
-    const float worldHeight = 341.f;
+    constexpr float worldWidth  = 1726.f;
+    constexpr float worldHeight = 341.f;
 
     auto winSize = window.getSize();
     float aspect = static_cast<float>(winSize.x) / static_cast<float>(winSize.y);
@@ -95,7 +95,7 @@ int main() {
 
     jetpack::InputManager inputManager(
         [&client](jetpack::InputManager::PlayerInput &&input) {
-            auto pkt = network::PacketFactory<PacketType>
+          const auto pkt = network::PacketFactory<PacketType>
                            ::CreatePacket(PacketType::kPlayerInput, input);
             client.queue_data(pkt.Data());
         },
@@ -143,8 +143,8 @@ int main() {
             }
 
             if (isGameOver && evt.is<sf::Event::MouseButtonPressed>()) {
-                auto mb = evt.getIf<sf::Event::MouseButtonPressed>();
-                if (mb->button == sf::Mouse::Button::Left) {
+              if (auto mb = evt.getIf<sf::Event::MouseButtonPressed>();
+                  mb->button == sf::Mouse::Button::Left) {
                     sf::Vector2f mpos = window.mapPixelToCoords({mb->position.x, mb->position.y});
                     if (quitButton.getGlobalBounds().contains(mpos))
                         window.close();
@@ -152,8 +152,8 @@ int main() {
             }
 
             if (!gameStarted && evt.is<sf::Event::MouseButtonPressed>()) {
-                auto mb = evt.getIf<sf::Event::MouseButtonPressed>();
-                if (mb->button == sf::Mouse::Button::Left) {
+              if (auto mb = evt.getIf<sf::Event::MouseButtonPressed>();
+                  mb->button == sf::Mouse::Button::Left) {
                     sf::Vector2f mpos = window.mapPixelToCoords({mb->position.x, mb->position.y});
                     if (readyButton.getGlobalBounds().contains(mpos)) {
                         isReady = !isReady;
@@ -205,20 +205,19 @@ int main() {
                                 auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                                  now.time_since_epoch()
                                              ).count();
-                                pingMs = uint32_t(nowMs) - sent;
+                                pingMs = static_cast<uint32_t>(nowMs) - sent;
                                 break;
                             }
                             case PacketType::kMapCoins: {
                                 if (auto arr = network::PacketFactory<PacketType>
                                                    ::ExtractDataArray<MapCoin>(packet)) {
-                                    // On recharge tous les coins
                                     coinSprites.clear();
-                                    for (auto &mc : *arr) {
+                                    for (auto &[id, pos] : *arr) {
                                         sf::Sprite spr(coinSheet, coinFrameRect);
                                         spr.setOrigin({frameW / 2.f, frameH / 2.f});
                                         spr.setScale({0.1f, 0.1f});
-                                        spr.setPosition({mc.pos.x, mc.pos.y});
-                                        coinSprites.emplace(mc.id, std::move(spr));
+                                        spr.setPosition({pos.x, pos.y});
+                                        coinSprites.emplace(id, std::move(spr));
                                     }
                                 }
                                 break;
@@ -246,8 +245,8 @@ int main() {
                             case PacketType::kCoinCollected: {
                                 if (auto ccp = network::PacketFactory<PacketType>
                                                    ::ExtractData<CoinCollectedPacket>(packet)) {
-                                    auto it = coinSprites.find(ccp->coin_id);
-                                    if (it != coinSprites.end()) {
+                                if (auto it = coinSprites.find(ccp->coin_id);
+                                    it != coinSprites.end()) {
                                         auto col = it->second.getColor();
                                         col.a = 128;
                                         it->second.setColor(col);
@@ -317,23 +316,23 @@ int main() {
                             case PacketType::kUpdatePlayers: {
                                 if (auto arr = network::PacketFactory<PacketType>
                                                    ::ExtractDataArray<UpdatePlayer>(packet)) {
-                                    for (auto &up : *arr) {
-                                        auto it = playerSprites.find(up.player_id);
-                                        if (it == playerSprites.end()) {
+                                    for (auto &[player_id, x, y] : *arr) {
+                                    if (auto it = playerSprites.find(player_id);
+                                        it == playerSprites.end()) {
                                             sf::Sprite spr(playerTex, playerFrameRect);
                                             spr.setOrigin(
                                                 {playerFrameRect.size.x / 2.f,
                                                  playerFrameRect.size.y / 2.f});
                                             spr.setScale({0.2f, 0.2f});
-                                            spr.setPosition({up.x, up.y});
-                                            if (localPlayerId && *localPlayerId != up.player_id) {
+                                            spr.setPosition({x, y});
+                                            if (localPlayerId && *localPlayerId != player_id) {
                                                 auto c = spr.getColor();
                                                 c.a = 128;
                                                 spr.setColor(c);
                                             }
-                                            playerSprites.emplace(up.player_id, std::move(spr));
+                                            playerSprites.emplace(player_id, std::move(spr));
                                         } else {
-                                            it->second.setPosition({up.x, up.y});
+                                            it->second.setPosition({x, y});
                                         }
                                     }
                                 }
@@ -395,8 +394,8 @@ int main() {
         pingText.setString("Ping: " + std::to_string(pingMs) + " ms");
 
         if (localPlayerId) {
-            auto it = playerSprites.find(*localPlayerId);
-            if (it != playerSprites.end()) {
+          if (auto it = playerSprites.find(*localPlayerId);
+              it != playerSprites.end()) {
                 sf::Vector2f pos = it->second.getPosition();
                 sf::Vector2f half = gameView.getSize() / 2.f;
                 float cx = std::clamp(pos.x, half.x, worldWidth  - half.x);
