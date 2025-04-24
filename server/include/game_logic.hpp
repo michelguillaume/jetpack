@@ -35,7 +35,7 @@ public:
     std::vector<CoinExpiredPacket>,
     std::vector<PlayerWinPacket>,
     std::vector<PlayerLosePacket>
-  > Update(float dt, GameState &state) {
+  > Update(const float dt, GameState &state) {
     if (!state.started) {
       return {{}, {}, {}, {}, {}, {}};
     }
@@ -47,34 +47,37 @@ public:
     std::vector<PlayerWinPacket>       wins;
     std::vector<PlayerLosePacket>      loses;
 
-    for (auto & [pid, pd] : state.players) {
-      if (!pd.alive) continue;
+    for (auto &[pid, pd] : state.players) {
+      if (!pd.alive)
+        continue;
 
-      bool jet  = (pd.lastInput.actions & static_cast<uint16_t>(PlayerAction::ActivateJetpack)) != 0;
-      bool fall = pd.velocity.y > 0;
+      const bool jet = (pd.lastInput.actions &
+                  static_cast<uint16_t>(PlayerAction::ActivateJetpack)) != 0;
+      const bool fall = pd.velocity.y > 0;
 
       pd.position.x += horizontalSpeed_ * dt;
 
       if (jet) {
-        float thrust = accelThrust_ * (fall ? fallingThrustMultiplier_ : 1.f);
+        const float thrust = accelThrust_ * (fall ? fallingThrustMultiplier_ : 1.f);
         pd.velocity.y -= thrust * dt;
       }
 
       float g = gravity_;
-      if      (fall)                         g *= fallMultiplier_;
-      else if (!jet && pd.velocity.y < 0.f)  g *= lowJumpMultiplier_;
+      if (fall)
+        g *= fallMultiplier_;
+      else if (!jet && pd.velocity.y < 0.f)
+        g *= lowJumpMultiplier_;
 
       pd.velocity.y += g * dt;
       pd.velocity.y = std::clamp(pd.velocity.y, -maxUpSpeed_, maxFallSpeed_);
       pd.position.y += pd.velocity.y * dt;
 
-      // ground / ceiling collision
       if (pd.position.y >= groundY_) {
         pd.position.y = groundY_;
         pd.velocity.y = 0.f;
-        pd.onGround   = true;
+        pd.onGround = true;
       } else {
-        pd.onGround   = false;
+        pd.onGround = false;
       }
       if (pd.position.y <= ceilingY_) {
         pd.position.y = ceilingY_;
@@ -82,42 +85,43 @@ public:
       }
     }
 
-    const float rsum = (10.f + 10.f) * (10.f + 10.f);
+    constexpr float rsum = (10.f + 10.f) * (10.f + 10.f);
     for (auto & [pid, pd] : state.players) {
       if (!pd.alive) continue;
       auto &col = collectedByPlayer_[pid];
-      for (auto &c : state.map.getCoins()) {
-        if (col.count(c.id)) continue;
-        float dx = pd.position.x - c.pos.x;
-        float dy = pd.position.y - c.pos.y;
+      for (const auto &[id, pos] : state.map.getCoins()) {
+        if (col.contains(id))
+          continue;
+        const float dx = pd.position.x - pos.x;
+        const float dy = pd.position.y - pos.y;
         if (dx*dx + dy*dy <= rsum) {
-          coins.push_back({ pid, c.id });
-          col.insert(c.id);
+          coins.push_back({ pid, id });
+          col.insert(id);
         }
       }
     }
 
-    for (auto &c : state.map.getCoins()) {
+    for (const auto &[id, pos] : state.map.getCoins()) {
       bool all = true;
       for (auto const & [pid, pd] : state.players) {
-        if (!collectedByPlayer_[pid].count(c.id)) {
+        if (!collectedByPlayer_[pid].contains(id)) {
           all = false;
           break;
         }
       }
-      if (all) expired.push_back({ c.id });
+      if (all) expired.push_back({ id });
     }
 
     for (auto & [pid, pd] : state.players) {
       if (!pd.alive) continue;
-      for (auto &zs : state.map.getZapperSegments()) {
-        float minx = std::min(zs.a.x, zs.b.x) - 10.f;
-        float maxx = std::max(zs.a.x, zs.b.x) + 10.f;
-        float miny = std::min(zs.a.y, zs.b.y) - 10.f;
-        float maxy = std::max(zs.a.y, zs.b.y) + 10.f;
+      for (const auto &[id, a, b] : state.map.getZapperSegments()) {
+        const float minx = std::min(a.x, b.x) - 10.f;
+        const float maxx = std::max(a.x, b.x) + 10.f;
+        const float miny = std::min(a.y, b.y) - 10.f;
+        const float maxy = std::max(a.y, b.y) + 10.f;
         if (pd.position.x >= minx && pd.position.x <= maxx &&
             pd.position.y >= miny && pd.position.y <= maxy) {
-          zaps.push_back({ pid, zs.id });
+          zaps.push_back({ pid, id });
           deaths.push_back({ pid });
           state.players[pid].alive = false;
           break;
@@ -134,10 +138,10 @@ public:
     }
     if (!finishers.empty()) {
       uint32_t best      = finishers[0];
-      uint32_t bestCount = static_cast<uint32_t>(collectedByPlayer_[best].size());
+      auto bestCount = static_cast<uint32_t>(collectedByPlayer_[best].size());
       for (auto pid : finishers) {
-        uint32_t cnt = static_cast<uint32_t>(collectedByPlayer_[pid].size());
-        if (cnt > bestCount) {
+        if (const auto cnt = static_cast<uint32_t>(collectedByPlayer_[pid].size());
+            cnt > bestCount) {
           best      = pid;
           bestCount = cnt;
         }
@@ -146,8 +150,9 @@ public:
       state.players[best].alive = false;
 
       for (auto pid : finishers) {
-        if (pid == best) continue;
-        uint32_t cnt = static_cast<uint32_t>(collectedByPlayer_[pid].size());
+        if (pid == best)
+          continue;
+        const auto cnt = static_cast<uint32_t>(collectedByPlayer_[pid].size());
         loses.push_back({ pid, cnt });
         state.players[pid].alive = false;
       }
@@ -159,8 +164,8 @@ public:
         if (pd.alive) surv.push_back(pid);
 
       if (surv.size() == 1) {
-        uint32_t last  = surv[0];
-        uint32_t count = static_cast<uint32_t>(collectedByPlayer_[last].size());
+        const uint32_t last = surv[0];
+        const auto count = static_cast<uint32_t>(collectedByPlayer_[last].size());
         wins.push_back({ last, count });
         state.players[last].alive = false;
       }
@@ -177,8 +182,8 @@ public:
     return { coins, zaps, deaths, expired, wins, loses };
   }
 
-  [[nodiscard]] uint32_t GetCollectedCount(uint32_t pid) const {
-    auto it = collectedByPlayer_.find(pid);
+  [[nodiscard]] uint32_t GetCollectedCount(const uint32_t pid) const {
+    const auto it = collectedByPlayer_.find(pid);
     return it == collectedByPlayer_.end()
          ? 0u
          : static_cast<uint32_t>(it->second.size());

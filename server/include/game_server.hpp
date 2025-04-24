@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "network/protocol.hpp"
@@ -29,9 +30,9 @@ template <typename PacketType> struct PlayerInfo {
 
 template <typename PacketType> class GameServer {
 public:
-  explicit GameServer(uint16_t port, const std::string &mapPath)
+  explicit GameServer(const uint16_t port, std::string mapPath)
       : port_(port), tcp_server_(std::make_unique<TcpServer>(port_)),
-        mapPath_(mapPath), tileSize_(38.f) {
+        mapPath_(std::move(mapPath)), tileSize_(38.f) {
     if (!game_state_.map.loadFromFile(mapPath_, tileSize_)) {
       throw std::runtime_error("Unable to load map file");
     }
@@ -77,7 +78,7 @@ public:
 
     while (true) {
       auto current_time = clock::now();
-      float delta_time =
+      const float delta_time =
           std::chrono::duration<float>(current_time - previous_time).count();
 
       previous_time = current_time;
@@ -129,9 +130,9 @@ public:
           pl.conn->queue_data(pkt.Data());
       }
 
-      for (auto &evt : wins) {
-        uint32_t pid = evt.playerId;
-        uint32_t score = game_logic_.GetCollectedCount(pid);
+      for (auto &[playerId, coinsCollected] : wins) {
+        const uint32_t pid = playerId;
+        const uint32_t score = game_logic_.GetCollectedCount(pid);
         PlayerWinPacket wp{pid, score};
 
         auto pktWin = network::PacketFactory<PacketType>::CreatePacket(
@@ -140,9 +141,9 @@ public:
           pl.conn->queue_data(pktWin.Data());
       }
 
-      for (auto &evt : loses) {
-        uint32_t pid   = evt.playerId;
-        uint32_t score = evt.coinsCollected;
+      for (auto &[playerId, coinsCollected] : loses) {
+        const uint32_t pid = playerId;
+        const uint32_t score = coinsCollected;
         PlayerLosePacket lp{pid, score};
 
         auto pktLose = network::PacketFactory<PacketType>::CreatePacket(
@@ -188,7 +189,7 @@ private:
     const auto &coins = game_state_.map.getCoins();
     constexpr size_t MaxCoins = 512;
     std::array<MapCoin, MaxCoins> coinArr{};
-    size_t coinCount = std::min(coins.size(), coinArr.size());
+    const size_t coinCount = std::min(coins.size(), coinArr.size());
     for (size_t i = 0; i < coinCount; ++i)
       coinArr[i] = {coins[i].id, coins[i].pos};
 
@@ -200,7 +201,7 @@ private:
     const auto &segs = game_state_.map.getZapperSegments();
     constexpr size_t MaxSegs = 512;
     std::array<MapZapperSegment, MaxSegs> segArr{};
-    size_t segCount = std::min(segs.size(), segArr.size());
+    const size_t segCount = std::min(segs.size(), segArr.size());
     for (size_t i = 0; i < segCount; ++i)
       segArr[i] = {segs[i].id, segs[i].a, segs[i].b};
 
@@ -358,7 +359,7 @@ private:
   }
 
   void broadcastReadyCount() {
-    PlayerReadyCountPacket pr;
+    PlayerReadyCountPacket pr{};
     pr.ready_count = 0;
     for (auto const &[pid, pd] : game_state_.players)
       if (pd.ready)
@@ -371,7 +372,7 @@ private:
   }
 
   void tryStartGame() {
-    auto total = game_state_.players.size();
+    const auto total = game_state_.players.size();
     if (total < 2)
       return;
 
@@ -402,7 +403,7 @@ private:
 
   void SendUpdatesToClients() { SendPlayerUpdates(); }
 
-  std::pair<float, float> getPlayerPosition(uint32_t id) const {
+  [[nodiscard]] std::pair<float, float> getPlayerPosition(uint32_t id) const {
     const auto &pd = game_state_.players.at(id);
     return {pd.position.x, pd.position.y};
   }
