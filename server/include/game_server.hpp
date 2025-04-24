@@ -30,8 +30,8 @@ template <typename PacketType> struct PlayerInfo {
 template <typename PacketType> class GameServer {
 public:
   explicit GameServer(uint16_t port, const std::string &mapPath)
-  : port_(port), tcp_server_(std::make_unique<TcpServer>(port_)) , mapPath_(mapPath)
-, tileSize_(38.f) {
+      : port_(port), tcp_server_(std::make_unique<TcpServer>(port_)),
+        mapPath_(mapPath), tileSize_(38.f) {
     if (!game_state_.map.loadFromFile(mapPath, tileSize_)) {
       throw std::runtime_error("Unable to load map file");
     }
@@ -85,7 +85,7 @@ public:
       update_pollfds();
       process_poll_events();
 
-      auto [coins, zaps, deaths, expiries] =
+      auto [coins, zaps, deaths, expiries, wins] =
           game_logic_.Update(delta_time, game_state_);
 
       for (auto &evt : coins) {
@@ -110,7 +110,7 @@ public:
 
         uint32_t pid = evt.player_id;
         const uint32_t coinsCount = game_logic_.GetCollectedCount(pid);
-        PlayerScorePacket scorePkt{ pid, coinsCount };
+        PlayerScorePacket scorePkt{pid, coinsCount};
         auto pktScore = network::PacketFactory<PacketType>::CreatePacket(
             PacketType::kPlayerScore, scorePkt);
 
@@ -127,6 +127,18 @@ public:
             PacketType::kCoinExpired, evt);
         for (auto &pl : players_)
           pl.conn->queue_data(pkt.Data());
+      }
+
+      for (auto &evt : wins) {
+        uint32_t pid = evt.playerId;
+        uint32_t score = game_logic_.GetCollectedCount(pid);
+        PlayerWinPacket wp{pid, score};
+
+        auto pktWin = network::PacketFactory<PacketType>::CreatePacket(
+            PacketType::kPlayerWin, wp);
+
+        for (auto &pl : players_)
+          pl.conn->queue_data(pktWin.Data());
       }
 
       if (tick_counter % kUpdateFrequencyTicks == 0) {
@@ -156,9 +168,9 @@ private:
   GameLogic game_logic_;
   GameState game_state_;
   uint32_t next_player_id_{0};
-  std::string               mapPath_;
-  float                     tileSize_;
-  Vec2                      spawnPosition_ {};
+  std::string mapPath_;
+  float tileSize_;
+  Vec2 spawnPosition_{};
 
   std::unordered_set<uint32_t> readyPlayers_;
 
@@ -167,7 +179,7 @@ private:
 
     game_logic_.Reset();
 
-    for (auto & [pid, pd] : game_state_.players) {
+    for (auto &[pid, pd] : game_state_.players) {
       pd = PlayerData{};
       pd.position = spawnPosition_;
     }
@@ -180,12 +192,10 @@ private:
       std::array<MapCoin, MaxCoins> arr{};
       size_t count = std::min(coins.size(), arr.size());
       for (size_t i = 0; i < count; ++i) {
-        arr[i] = { coins[i].id, coins[i].pos };
+        arr[i] = {coins[i].id, coins[i].pos};
       }
       auto pkt = network::PacketFactory<PacketType>::CreatePacket(
-          PacketType::kMapCoins,
-          std::span(arr.data(), count)
-      );
+          PacketType::kMapCoins, std::span(arr.data(), count));
       for (auto &pl : players_)
         pl.conn->queue_data(pkt.Data());
     }
@@ -196,17 +206,15 @@ private:
       std::array<MapZapperSegment, MaxSegs> arr{};
       size_t count = std::min(segs.size(), arr.size());
       for (size_t i = 0; i < count; ++i) {
-        arr[i] = { segs[i].id, segs[i].a, segs[i].b };
+        arr[i] = {segs[i].id, segs[i].a, segs[i].b};
       }
       auto pkt = network::PacketFactory<PacketType>::CreatePacket(
-          PacketType::kMapZappers,
-          std::span(arr.data(), count)
-      );
+          PacketType::kMapZappers, std::span(arr.data(), count));
       for (auto &pl : players_)
         pl.conn->queue_data(pkt.Data());
     }
 
-    //broadcastReadyCount();
+    // broadcastReadyCount();
   }
 
   void
@@ -332,11 +340,13 @@ private:
 
   void tryStartGame() {
     auto total = game_state_.players.size();
-    if (total < 2) return;
+    if (total < 2)
+      return;
 
     size_t ready = 0;
-    for (auto const& [pid, pd] : game_state_.players)
-      if (pd.ready) ++ready;
+    for (auto const &[pid, pd] : game_state_.players)
+      if (pd.ready)
+        ++ready;
 
     if (ready == total && !game_state_.started) {
       resetGame();
@@ -345,13 +355,12 @@ private:
       std::cout << "All players ready — starting game\n";
 
       GameStartPacket gsp{};
-      auto pkt = network::PacketFactory<PacketType>
-                     ::CreatePacket(PacketType::kGameStart, gsp);
+      auto pkt = network::PacketFactory<PacketType>::CreatePacket(
+          PacketType::kGameStart, gsp);
       for (auto &pl : players_)
         pl.conn->queue_data(pkt.Data());
     }
   }
-
 
   void SendUpdatesToClients() { SendPlayerUpdates(); }
 

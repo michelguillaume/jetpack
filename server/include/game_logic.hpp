@@ -6,6 +6,8 @@
 #include "game_state.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -14,96 +16,99 @@ namespace server {
 class GameLogic {
 public:
   GameLogic()
-      : gravity_(980.f), accelThrust_(3500.f), fallingThrustMultiplier_(1.6f),
-        fallMultiplier_(2.5f), lowJumpMultiplier_(2.0f),
-        horizontalSpeed_(100.f), maxFallSpeed_(800.f), maxUpSpeed_(600.f),
-        groundY_(255.f), ceilingY_(85.f) {}
+    : gravity_(980.f),
+      accelThrust_(3500.f),
+      fallingThrustMultiplier_(1.6f),
+      fallMultiplier_(2.5f),
+      lowJumpMultiplier_(2.0f),
+      horizontalSpeed_(100.f),
+      maxFallSpeed_(800.f),
+      maxUpSpeed_(600.f),
+      groundY_(255.f),
+      ceilingY_(85.f)
+  {}
 
-  std::tuple<std::vector<CoinCollectedPacket>,
-             std::vector<ZapperCollisionPacket>, std::vector<PlayerDeathPacket>,
-             std::vector<CoinExpiredPacket>>
-  Update(float dt, GameState &state) {
-    if (!state.started)
-      return {{}, {}, {}, {}};
+  std::tuple<
+    std::vector<CoinCollectedPacket>,
+    std::vector<ZapperCollisionPacket>,
+    std::vector<PlayerDeathPacket>,
+    std::vector<CoinExpiredPacket>,
+    std::vector<PlayerWinPacket>
+  > Update(float dt, GameState &state) {
+    if (!state.started) {
+      return {{}, {}, {}, {}, {}};
+    }
 
     std::vector<CoinCollectedPacket> coins;
     std::vector<ZapperCollisionPacket> zaps;
     std::vector<PlayerDeathPacket> deaths;
     std::vector<CoinExpiredPacket> expired;
+    std::vector<PlayerWinPacket> wins;
 
-    for (auto &[id, data] : state.players) {
-      if (!data.alive)
-        continue;
-      bool jetpackOn =
-          (data.lastInput.actions &
-           static_cast<uint16_t>(PlayerAction::ActivateJetpack)) != 0;
-      bool isFalling = data.velocity.y > 0.f;
-      data.position.x += horizontalSpeed_ * dt;
-      if (jetpackOn) {
-        float thrust =
-            accelThrust_ * (isFalling ? fallingThrustMultiplier_ : 1.f);
-        data.velocity.y -= thrust * dt;
+    for (auto & [pid, pd] : state.players) {
+      if (!pd.alive) continue;
+      bool jet = (pd.lastInput.actions & static_cast<uint16_t>(PlayerAction::ActivateJetpack)) != 0;
+      bool fall = pd.velocity.y > 0;
+      pd.position.x += horizontalSpeed_ * dt;
+      if (jet) {
+        float thrust = accelThrust_ * (fall ? fallingThrustMultiplier_ : 1.f);
+        pd.velocity.y -= thrust * dt;
       }
       float g = gravity_;
-      if (isFalling)
-        g *= fallMultiplier_;
-      else if (!jetpackOn && data.velocity.y < 0.f)
-        g *= lowJumpMultiplier_;
-      data.velocity.y += g * dt;
-      data.velocity.y =
-          std::clamp(data.velocity.y, -maxUpSpeed_, maxFallSpeed_);
-      data.position.y += data.velocity.y * dt;
-      if (data.position.y >= groundY_) {
-        data.position.y = groundY_;
-        data.velocity.y = 0.f;
-        data.onGround = true;
-      } else
-        data.onGround = false;
-      if (data.position.y <= ceilingY_) {
-        data.position.y = ceilingY_;
-        data.velocity.y = 0.f;
+      if (fall) g *= fallMultiplier_;
+      else if (!jet && pd.velocity.y < 0) g *= lowJumpMultiplier_;
+      pd.velocity.y += g * dt;
+      pd.velocity.y = std::clamp(pd.velocity.y, -maxUpSpeed_, maxFallSpeed_);
+      pd.position.y += pd.velocity.y * dt;
+      if (pd.position.y >= groundY_) {
+        pd.position.y = groundY_;
+        pd.velocity.y = 0;
+        pd.onGround = true;
+      } else {
+        pd.onGround = false;
+      }
+      if (pd.position.y <= ceilingY_) {
+        pd.position.y = ceilingY_;
+        pd.velocity.y = 0;
       }
     }
 
-    const float coinR = 10.f, playerR = 10.f;
-    const float sumR2 = (coinR + playerR) * (coinR + playerR);
-    for (auto &[pid, pd] : state.players) {
-      if (!pd.alive)
-        continue;
-      auto &colSet = collectedByPlayer_[pid];
-      for (auto &coin : state.map.getCoins()) {
-        if (colSet.count(coin.id))
-          continue;
-        float dx = pd.position.x - coin.pos.x;
-        float dy = pd.position.y - coin.pos.y;
-        if (dx * dx + dy * dy <= sumR2) {
-          coins.push_back({pid, coin.id});
-          colSet.insert(coin.id);
+    const float rsum = (10.f + 10.f) * (10.f + 10.f);
+    for (auto & [pid, pd] : state.players) {
+      if (!pd.alive) continue;
+      auto &col = collectedByPlayer_[pid];
+      for (auto &c : state.map.getCoins()) {
+        if (col.count(c.id)) continue;
+        float dx = pd.position.x - c.pos.x;
+        float dy = pd.position.y - c.pos.y;
+        if (dx*dx + dy*dy <= rsum) {
+          coins.push_back({pid, c.id});
+          col.insert(c.id);
         }
       }
     }
 
-    for (auto &coin : state.map.getCoins()) {
-      bool allGot = true;
-      for (auto &[pid, _] : state.players) {
-        if (!collectedByPlayer_[pid].count(coin.id)) {
-          allGot = false;
+    for (auto &c : state.map.getCoins()) {
+      bool all = true;
+      for (auto const & [pid, pd] : state.players) {
+        if (!collectedByPlayer_[pid].count(c.id)) {
+          all = false;
           break;
         }
       }
-      if (allGot)
-        expired.push_back({coin.id});
+      if (all) expired.push_back({c.id});
     }
 
-    for (auto &[pid, pd] : state.players) {
-      if (!pd.alive)
-        continue;
-      for (auto &seg : state.map.getZapperSegments()) {
-        if (pd.position.x >= std::min(seg.a.x, seg.b.x) - playerR &&
-            pd.position.x <= std::max(seg.a.x, seg.b.x) + playerR &&
-            pd.position.y >= std::min(seg.a.y, seg.b.y) - playerR &&
-            pd.position.y <= std::max(seg.a.y, seg.b.y) + playerR) {
-          zaps.push_back({pid, seg.id});
+    for (auto & [pid, pd] : state.players) {
+      if (!pd.alive) continue;
+      for (auto &zs : state.map.getZapperSegments()) {
+        float minx = std::min(zs.a.x, zs.b.x) - 10;
+        float maxx = std::max(zs.a.x, zs.b.x) + 10;
+        float miny = std::min(zs.a.y, zs.b.y) - 10;
+        float maxy = std::max(zs.a.y, zs.b.y) + 10;
+        if (pd.position.x >= minx && pd.position.x <= maxx &&
+            pd.position.y >= miny && pd.position.y <= maxy) {
+          zaps.push_back({pid, zs.id});
           deaths.push_back({pid});
           state.players[pid].alive = false;
           break;
@@ -111,22 +116,39 @@ public:
       }
     }
 
-    bool anyAlive = false;
-    for (auto const &[pid, pd] : state.players) {
-      if (pd.alive) { anyAlive = true; break; }
-    }
-    if (!anyAlive) {
-      state.started = false;
+    for (auto & [pid, pd] : state.players) {
+      if (!pd.alive) continue;
+      if (state.map.isFinishReached(pd.position)) {
+        uint32_t count = static_cast<uint32_t>(collectedByPlayer_[pid].size());
+        wins.push_back({pid, count});
+        state.players[pid].alive = false;
+      }
     }
 
-    return {coins, zaps, deaths, expired};
+    {
+      std::vector<uint32_t> surv;
+      for (auto const & [pid, pd] : state.players)
+        if (pd.alive) surv.push_back(pid);
+      if (surv.size() == 1) {
+        uint32_t last = surv[0];
+        uint32_t count = static_cast<uint32_t>(collectedByPlayer_[last].size());
+        wins.push_back({last, count});
+        state.players[last].alive = false;
+      }
+    }
+
+    bool any = false;
+    for (auto const & [_, pd] : state.players) {
+      if (pd.alive) { any = true; break; }
+    }
+    if (!any) state.started = false;
+
+    return {coins, zaps, deaths, expired, wins};
   }
 
-  uint32_t GetCollectedCount(const uint32_t pid) const {
-    const auto it = collectedByPlayer_.find(pid);
-    return it == collectedByPlayer_.end()
-               ? 0u
-               : static_cast<uint32_t>(it->second.size());
+  [[nodiscard]] uint32_t GetCollectedCount(uint32_t pid) const {
+    auto it = collectedByPlayer_.find(pid);
+    return it == collectedByPlayer_.end() ? 0u : static_cast<uint32_t>(it->second.size());
   }
 
   void Reset() {
@@ -138,6 +160,7 @@ private:
   float fallMultiplier_, lowJumpMultiplier_;
   float horizontalSpeed_, maxFallSpeed_, maxUpSpeed_;
   float groundY_, ceilingY_;
+
   std::unordered_map<uint32_t, std::unordered_set<uint32_t>> collectedByPlayer_;
 };
 

@@ -20,6 +20,7 @@ enum class PacketType : uint32_t {
   kGameStart,
   kPlayerScore,
   kData,
+  kPlayerWin,
   kMaxTypes
 };
 

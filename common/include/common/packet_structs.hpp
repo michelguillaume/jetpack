@@ -83,6 +83,11 @@ struct PlayerScorePacket {
     uint32_t coins_collected;
 };
 
+struct PlayerWinPacket {
+    uint32_t playerId;
+    uint32_t coinsCollected;
+};
+
 #pragma pack(pop)
 
 #endif // PACKET_STRUCTS_HPP_
