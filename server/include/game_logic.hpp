@@ -33,43 +33,52 @@ public:
     std::vector<ZapperCollisionPacket>,
     std::vector<PlayerDeathPacket>,
     std::vector<CoinExpiredPacket>,
-    std::vector<PlayerWinPacket>
+    std::vector<PlayerWinPacket>,
+    std::vector<PlayerLosePacket>
   > Update(float dt, GameState &state) {
     if (!state.started) {
-      return {{}, {}, {}, {}, {}};
+      return {{}, {}, {}, {}, {}, {}};
     }
 
-    std::vector<CoinCollectedPacket> coins;
+    std::vector<CoinCollectedPacket>   coins;
     std::vector<ZapperCollisionPacket> zaps;
-    std::vector<PlayerDeathPacket> deaths;
-    std::vector<CoinExpiredPacket> expired;
-    std::vector<PlayerWinPacket> wins;
+    std::vector<PlayerDeathPacket>     deaths;
+    std::vector<CoinExpiredPacket>     expired;
+    std::vector<PlayerWinPacket>       wins;
+    std::vector<PlayerLosePacket>      loses;
 
     for (auto & [pid, pd] : state.players) {
       if (!pd.alive) continue;
-      bool jet = (pd.lastInput.actions & static_cast<uint16_t>(PlayerAction::ActivateJetpack)) != 0;
+
+      bool jet  = (pd.lastInput.actions & static_cast<uint16_t>(PlayerAction::ActivateJetpack)) != 0;
       bool fall = pd.velocity.y > 0;
+
       pd.position.x += horizontalSpeed_ * dt;
+
       if (jet) {
         float thrust = accelThrust_ * (fall ? fallingThrustMultiplier_ : 1.f);
         pd.velocity.y -= thrust * dt;
       }
+
       float g = gravity_;
-      if (fall) g *= fallMultiplier_;
-      else if (!jet && pd.velocity.y < 0) g *= lowJumpMultiplier_;
+      if      (fall)                         g *= fallMultiplier_;
+      else if (!jet && pd.velocity.y < 0.f)  g *= lowJumpMultiplier_;
+
       pd.velocity.y += g * dt;
       pd.velocity.y = std::clamp(pd.velocity.y, -maxUpSpeed_, maxFallSpeed_);
       pd.position.y += pd.velocity.y * dt;
+
+      // ground / ceiling collision
       if (pd.position.y >= groundY_) {
         pd.position.y = groundY_;
-        pd.velocity.y = 0;
-        pd.onGround = true;
+        pd.velocity.y = 0.f;
+        pd.onGround   = true;
       } else {
-        pd.onGround = false;
+        pd.onGround   = false;
       }
       if (pd.position.y <= ceilingY_) {
         pd.position.y = ceilingY_;
-        pd.velocity.y = 0;
+        pd.velocity.y = 0.f;
       }
     }
 
@@ -82,7 +91,7 @@ public:
         float dx = pd.position.x - c.pos.x;
         float dy = pd.position.y - c.pos.y;
         if (dx*dx + dy*dy <= rsum) {
-          coins.push_back({pid, c.id});
+          coins.push_back({ pid, c.id });
           col.insert(c.id);
         }
       }
@@ -96,31 +105,50 @@ public:
           break;
         }
       }
-      if (all) expired.push_back({c.id});
+      if (all) expired.push_back({ c.id });
     }
 
     for (auto & [pid, pd] : state.players) {
       if (!pd.alive) continue;
       for (auto &zs : state.map.getZapperSegments()) {
-        float minx = std::min(zs.a.x, zs.b.x) - 10;
-        float maxx = std::max(zs.a.x, zs.b.x) + 10;
-        float miny = std::min(zs.a.y, zs.b.y) - 10;
-        float maxy = std::max(zs.a.y, zs.b.y) + 10;
+        float minx = std::min(zs.a.x, zs.b.x) - 10.f;
+        float maxx = std::max(zs.a.x, zs.b.x) + 10.f;
+        float miny = std::min(zs.a.y, zs.b.y) - 10.f;
+        float maxy = std::max(zs.a.y, zs.b.y) + 10.f;
         if (pd.position.x >= minx && pd.position.x <= maxx &&
             pd.position.y >= miny && pd.position.y <= maxy) {
-          zaps.push_back({pid, zs.id});
-          deaths.push_back({pid});
+          zaps.push_back({ pid, zs.id });
+          deaths.push_back({ pid });
           state.players[pid].alive = false;
           break;
         }
       }
     }
 
+    std::vector<uint32_t> finishers;
     for (auto & [pid, pd] : state.players) {
       if (!pd.alive) continue;
       if (state.map.isFinishReached(pd.position)) {
-        uint32_t count = static_cast<uint32_t>(collectedByPlayer_[pid].size());
-        wins.push_back({pid, count});
+        finishers.push_back(pid);
+      }
+    }
+    if (!finishers.empty()) {
+      uint32_t best      = finishers[0];
+      uint32_t bestCount = static_cast<uint32_t>(collectedByPlayer_[best].size());
+      for (auto pid : finishers) {
+        uint32_t cnt = static_cast<uint32_t>(collectedByPlayer_[pid].size());
+        if (cnt > bestCount) {
+          best      = pid;
+          bestCount = cnt;
+        }
+      }
+      wins.push_back({ best, bestCount });
+      state.players[best].alive = false;
+
+      for (auto pid : finishers) {
+        if (pid == best) continue;
+        uint32_t cnt = static_cast<uint32_t>(collectedByPlayer_[pid].size());
+        loses.push_back({ pid, cnt });
         state.players[pid].alive = false;
       }
     }
@@ -129,26 +157,31 @@ public:
       std::vector<uint32_t> surv;
       for (auto const & [pid, pd] : state.players)
         if (pd.alive) surv.push_back(pid);
+
       if (surv.size() == 1) {
-        uint32_t last = surv[0];
+        uint32_t last  = surv[0];
         uint32_t count = static_cast<uint32_t>(collectedByPlayer_[last].size());
-        wins.push_back({last, count});
+        wins.push_back({ last, count });
         state.players[last].alive = false;
       }
     }
 
-    bool any = false;
+    bool anyAlive = false;
     for (auto const & [_, pd] : state.players) {
-      if (pd.alive) { any = true; break; }
+      if (pd.alive) { anyAlive = true; break; }
     }
-    if (!any) state.started = false;
+    if (!anyAlive) {
+      state.started = false;
+    }
 
-    return {coins, zaps, deaths, expired, wins};
+    return { coins, zaps, deaths, expired, wins, loses };
   }
 
   [[nodiscard]] uint32_t GetCollectedCount(uint32_t pid) const {
     auto it = collectedByPlayer_.find(pid);
-    return it == collectedByPlayer_.end() ? 0u : static_cast<uint32_t>(it->second.size());
+    return it == collectedByPlayer_.end()
+         ? 0u
+         : static_cast<uint32_t>(it->second.size());
   }
 
   void Reset() {
@@ -156,10 +189,16 @@ public:
   }
 
 private:
-  float gravity_, accelThrust_, fallingThrustMultiplier_;
-  float fallMultiplier_, lowJumpMultiplier_;
-  float horizontalSpeed_, maxFallSpeed_, maxUpSpeed_;
-  float groundY_, ceilingY_;
+  float gravity_;
+  float accelThrust_;
+  float fallingThrustMultiplier_;
+  float fallMultiplier_;
+  float lowJumpMultiplier_;
+  float horizontalSpeed_;
+  float maxFallSpeed_;
+  float maxUpSpeed_;
+  float groundY_;
+  float ceilingY_;
 
   std::unordered_map<uint32_t, std::unordered_set<uint32_t>> collectedByPlayer_;
 };

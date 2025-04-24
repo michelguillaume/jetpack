@@ -81,6 +81,7 @@ int main() {
     pingText.setFillColor(sf::Color::White);
     pingText.setPosition({10.f, 10.f});
 
+    // --- Ready button ---
     bool isReady = false;
     sf::RectangleShape readyButton({120.f, 40.f});
     readyButton.setPosition({10.f, 50.f});
@@ -140,6 +141,7 @@ int main() {
                 gameView.setSize({worldHeight * newAspect, worldHeight});
                 window.setView(gameView);
             }
+
             if (isGameOver && evt.is<sf::Event::MouseButtonPressed>()) {
                 auto mb = evt.getIf<sf::Event::MouseButtonPressed>();
                 if (mb->button == sf::Mouse::Button::Left) {
@@ -148,7 +150,8 @@ int main() {
                         window.close();
                 }
             }
-            if (!gameStarted && !isGameOver && evt.is<sf::Event::MouseButtonPressed>()) {
+
+            if (!gameStarted && evt.is<sf::Event::MouseButtonPressed>()) {
                 auto mb = evt.getIf<sf::Event::MouseButtonPressed>();
                 if (mb->button == sf::Mouse::Button::Left) {
                     sf::Vector2f mpos = window.mapPixelToCoords({mb->position.x, mb->position.y});
@@ -162,6 +165,7 @@ int main() {
                     }
                 }
             }
+
             inputManager.HandleEvent(evt);
         }
 
@@ -207,10 +211,11 @@ int main() {
                             case PacketType::kMapCoins: {
                                 if (auto arr = network::PacketFactory<PacketType>
                                                    ::ExtractDataArray<MapCoin>(packet)) {
+                                    // On recharge tous les coins
+                                    coinSprites.clear();
                                     for (auto &mc : *arr) {
                                         sf::Sprite spr(coinSheet, coinFrameRect);
-                                        spr.setOrigin({frameW / 2.f,
-                                                      frameH / 2.f});
+                                        spr.setOrigin({frameW / 2.f, frameH / 2.f});
                                         spr.setScale({0.1f, 0.1f});
                                         spr.setPosition({mc.pos.x, mc.pos.y});
                                         coinSprites.emplace(mc.id, std::move(spr));
@@ -270,8 +275,9 @@ int main() {
                                                    ::ExtractData<PlayerDeathPacket>(packet)) {
                                     playerSprites.erase(pdp->player_id);
                                     if (localPlayerId && pdp->player_id == *localPlayerId) {
-                                        isGameOver = true;
-                                        hasWon     = false;
+                                        isGameOver   = true;
+                                        hasWon       = false;
+                                        gameStarted  = false;
                                     }
                                 }
                                 break;
@@ -280,13 +286,30 @@ int main() {
                                 if (auto pwp = network::PacketFactory<PacketType>
                                                    ::ExtractData<PlayerWinPacket>(packet)) {
                                     if (localPlayerId && pwp->playerId == *localPlayerId) {
-                                        isGameOver  = true;
-                                        hasWon      = true;
-                                        finalScore  = pwp->coinsCollected;
+                                        isGameOver   = true;
+                                        hasWon       = true;
+                                        finalScore   = pwp->coinsCollected;
+                                        gameStarted  = false;
                                         scoreText.setString(
                                             "You Win! Score: " + std::to_string(finalScore)
                                         );
                                         scoreText.setFillColor(sf::Color::Green);
+                                    }
+                                }
+                                break;
+                            }
+                            case PacketType::kPlayerLose: {
+                                if (auto plp = network::PacketFactory<PacketType>
+                                                   ::ExtractData<PlayerLosePacket>(packet)) {
+                                    if (localPlayerId && plp->playerId == *localPlayerId) {
+                                        isGameOver   = true;
+                                        hasWon       = false;
+                                        finalScore   = plp->coinsCollected;
+                                        gameStarted  = false;
+                                        scoreText.setString(
+                                            "You Lose! Score: " + std::to_string(finalScore)
+                                        );
+                                        scoreText.setFillColor(sf::Color::Red);
                                     }
                                 }
                                 break;
@@ -300,7 +323,7 @@ int main() {
                                             sf::Sprite spr(playerTex, playerFrameRect);
                                             spr.setOrigin(
                                                 {playerFrameRect.size.x / 2.f,
-                                                playerFrameRect.size.y / 2.f});
+                                                 playerFrameRect.size.y / 2.f});
                                             spr.setScale({0.2f, 0.2f});
                                             spr.setPosition({up.x, up.y});
                                             if (localPlayerId && *localPlayerId != up.player_id) {
@@ -336,6 +359,14 @@ int main() {
                             }
                             case PacketType::kGameStart: {
                                 gameStarted = true;
+                                isGameOver  = false;
+                                hasWon      = false;
+                                finalScore  = 0;
+                                isReady     = false;
+                                readyText.setString("Ready");
+                                coinSprites.clear();
+                                playerSprites.clear();
+                                zapperShapes.clear();
                                 break;
                             }
                             default:
@@ -375,16 +406,17 @@ int main() {
             }
         }
 
-        // --- Rendering ---
         window.clear(sf::Color::Black);
         window.setView(gameView);
         window.draw(backgroundSprite);
         for (auto &kv : coinSprites)   window.draw(kv.second);
         for (auto &r  : zapperShapes)  window.draw(r);
         for (auto &kv : playerSprites) window.draw(kv.second);
+
         window.setView(window.getDefaultView());
         window.draw(pingText);
-        if (!gameStarted && !isGameOver) {
+
+        if (!gameStarted) {
             window.draw(readyButton);
             window.draw(readyText);
             window.draw(readyCountText);
@@ -394,6 +426,7 @@ int main() {
             window.draw(quitButton);
             window.draw(quitText);
         }
+
         window.display();
         sf::sleep(sf::milliseconds(16));
     }
